@@ -1,0 +1,28 @@
+{
+  "name": "sena-care",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "googleapis": "^140.0.0",
+    "lucide-react": "^0.383.0",
+    "next": "^14.2.5",
+    "papaparse": "^5.4.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7",
+    "xlsx": "^0.18.5"
+  },
+  "description": "ระบบร้องเรียนของโรงพยาบาลเสนา ใช้ Google Sheet เป็นฐานข้อมูลหลัก อ่าน/เขียนผ่าน Google Sheets API โดยตรง (ผ่าน Service Account) — credentials อยู่ฝั่งเซิร์ฟเวอร์ (Vercel Serverless Function) เท่านั้น ไม่เคยถูกส่งไปยังเบราว์เซอร์",
+  "main": "next.config.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
