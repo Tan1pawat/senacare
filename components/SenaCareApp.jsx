@@ -1447,15 +1447,19 @@ async function parseXLSXFile(file) {
   const records = [];
   const sheetsFound = [];
 
-  if (wb.SheetNames.includes("ร้องเรียน")) {
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets["ร้องเรียน"], { header: 1, raw: true, defval: null });
+  // ชื่อชีทไม่คงที่ในแต่ละปี (เช่น "ร้องเรียน"/"คำร้องเรียน", "คำชม"/"ชมเชย") จึงจับจากคำสำคัญแทน
+  const complaintSheetName = wb.SheetNames.find((n) => n.includes("ร้องเรียน"));
+  const complimentSheetName = wb.SheetNames.find((n) => n.includes("ชม") && !n.includes("ร้องเรียน"));
+
+  if (complaintSheetName) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[complaintSheetName], { header: 1, raw: true, defval: null });
     records.push(...parseComplaintSheet(rows));
-    sheetsFound.push("ร้องเรียน");
+    sheetsFound.push(complaintSheetName);
   }
-  if (wb.SheetNames.includes("คำชม")) {
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets["คำชม"], { header: 1, raw: true, defval: null });
+  if (complimentSheetName) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[complimentSheetName], { header: 1, raw: true, defval: null });
     records.push(...parseComplimentSheet(rows));
-    sheetsFound.push("คำชม");
+    sheetsFound.push(complimentSheetName);
   }
   if (!sheetsFound.length) {
     // fallback: treat first sheet as the aggregate "ระดับ" format via CSV conversion
