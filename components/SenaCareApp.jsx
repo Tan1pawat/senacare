@@ -10,11 +10,12 @@ import {
 } from "lucide-react";
 import Papa from "papaparse";
 
+// ป้ายกำกับตามเกณฑ์ความเสี่ยงทั่วไป 1-5: แดง=4-5/G-I, ส้ม=3/E-F, เหลือง=2/C-D, เขียว=1/A-B
 const SEV = {
-  red: { label: "รุนแรงสูง", color: "#B23A2E", bg: "#FBE7E3", ring: "#E0776A" },
-  orange: { label: "รุนแรง", color: "#B25A1E", bg: "#FCEADC", ring: "#E3934C" },
-  yellow: { label: "ปานกลาง", color: "#9A6B12", bg: "#FCF1DA", ring: "#E3AE4C" },
-  green: { label: "ทั่วไป", color: "#2F7A52", bg: "#E4F3EA", ring: "#6DBF93" },
+  red: { label: "รุนแรง/รุนแรงมาก", color: "#B23A2E", bg: "#FBE7E3", ring: "#E0776A" },
+  orange: { label: "ปานกลาง", color: "#B25A1E", bg: "#FCEADC", ring: "#E3934C" },
+  yellow: { label: "ไม่รุนแรง", color: "#9A6B12", bg: "#FCF1DA", ring: "#E3AE4C" },
+  green: { label: "ทั่วไป/Near miss", color: "#2F7A52", bg: "#E4F3EA", ring: "#6DBF93" },
 };
 
 const STATUS_STEPS = [
@@ -108,6 +109,19 @@ const DEPARTMENTS = [
   "เวรเปล", "OR", "ห้องฟัน", "องค์กรแพทย์", "เวชกรรมฯ", "บริหาร", "อื่นๆ",
 ];
 const DEPARTMENT_FALLBACK = "อื่นๆ";
+
+// ไฟล์รายงานเดิมพิมพ์หน่วยงานเป็นชื่อย่ออิสระ (เช่น "OPD", "er") — จับคู่กับรายชื่อมาตรฐานถ้าทำได้
+function normalizeDepartment(raw) {
+  const v = (raw || "").toString().trim();
+  if (!v) return DEPARTMENT_FALLBACK;
+  const upper = v.toUpperCase();
+  const hit = DEPARTMENTS.find((d) => {
+    if (d === v || d.toUpperCase() === upper) return true;
+    const abbr = (d.match(/\(([^)]+)\)/) || [])[1];
+    return abbr && abbr.toUpperCase() === upper;
+  });
+  return hit || v;
+}
 
 const COMPLAINT_CHANNELS = [
   "ระบบออนไลน์ (SENA CARE)", "สแกน QR Code", "Facebook", "เพจประชาสัมพันธ์", "ประชาสัมพันธ์",
@@ -704,9 +718,14 @@ function DashboardView({ complaints, onUpdateStatus, onSetResolved, onSetSeverit
       name: SEV[k].label, value: complaints.filter((c) => c.severity === k).length, key: k,
     }));
 
-    const byDept = DEPARTMENTS.map((d) => ({
-      name: d.split(" ")[0], full: d, count: complaints.filter((c) => c.department === d).length,
-    })).filter((d) => d.count > 0);
+    const deptCounts = {};
+    complaints.forEach((c) => {
+      const d = normalizeDepartment(c.department);
+      deptCounts[d] = (deptCounts[d] || 0) + 1;
+    });
+    const byDept = Object.entries(deptCounts)
+      .map(([full, count]) => ({ name: full.split(" ")[0], full, count }))
+      .sort((a, b) => b.count - a.count);
 
     const byCategory = CATEGORIES.map((c, i) => ({
       name: `${i + 1}. ${c.length > 18 ? c.slice(0, 18) + "…" : c}`, full: c,
@@ -1382,16 +1401,21 @@ function parseComplaintSheet(rows, fiscalYear) {
     const complaintDate = excelDateToISO(row[2]) || excelDateToISO(row[1]) || new Date().toISOString();
     const { fiscalYear: fy, month } = toFiscal(new Date(complaintDate));
     const category = suggestCategory(description);
-    const severityRaw = (row[10] || "").toString().trim();
+    // ระดับความรุนแรงอาจหลงไปอยู่คอลัมน์การตอบกลับ (row[11]) ในไฟล์เดิม — เช็คทั้งสองคอลัมน์
+    const cell10 = (row[10] || "").toString().trim();
+    const cell11 = (row[11] || "").toString().trim();
+    const isSev = (s) => /^[A-Ia-i]$/.test(s) || /^[1-5]$/.test(s);
+    const severityRaw = isSev(cell10) ? cell10 : (isSev(cell11) ? cell11 : "");
     let scale = "general", level = null;
     if (/^[A-Ia-i]$/.test(severityRaw)) { scale = "clinical"; level = severityRaw.toUpperCase(); }
+    else if (/^[1-5]$/.test(severityRaw)) { scale = "general"; level = severityRaw; }
     else { const g2 = classify(category, description); scale = g2.scale; level = g2.level; }
     const band = getLevel(scale, level).band;
-    const note = (row[11] || "").toString().trim();
+    const note = severityRaw === cell11 && cell11 ? "" : cell11;
     records.push({
       id: `XLSX-C-${fy}-${gi + 1}-${Date.now().toString(36)}`,
       category, description,
-      department: (row[4] || "").toString().trim() || DEPARTMENT_FALLBACK,
+      department: normalizeDepartment(row[4]),
       boxLocation: (row[3] || "").toString().trim(),
       complaintChannel: (row[9] || "").toString().trim() || "อื่นๆ",
       kind: "complaint",
@@ -1423,7 +1447,7 @@ function parseComplimentSheet(rows) {
     records.push({
       id: `XLSX-P-${fy}-${gi + 1}-${Date.now().toString(36)}`,
       category: "ชื่นชมบริการ", description,
-      department: (row[4] || "").toString().trim() || DEPARTMENT_FALLBACK,
+      department: normalizeDepartment(row[4]),
       boxLocation: (row[3] || "").toString().trim(),
       complaintChannel: (row[9] || "").toString().trim() || "อื่นๆ",
       kind: "compliment",
